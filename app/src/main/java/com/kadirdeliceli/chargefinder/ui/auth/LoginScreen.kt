@@ -1,5 +1,6 @@
 package com.kadirdeliceli.chargefinder.ui.auth
 
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -20,12 +21,15 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
@@ -37,8 +41,10 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
 
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val googleSignInHelper = remember { GoogleSignInHelper(context) }
 
-    // Giriş başarılı olunca haritaya yönlendir
     LaunchedEffect(uiState) {
         if (uiState is AuthUiState.Success) {
             onLoginSuccess()
@@ -113,7 +119,15 @@ fun LoginScreen(
 
         OutlinedButton(
             onClick = {
-                // Google Sign-In akışı sonra bağlanacak
+                coroutineScope.launch {
+                    try {
+                        val idToken = googleSignInHelper.getGoogleIdToken()
+                        viewModel.loginWithGoogle(idToken)
+                    } catch (e: Exception) {
+                        // Kullanıcı iptal etti veya hata oldu - sessizce geç
+                        // İstersen burada bir hata mesajı da gösterebiliriz
+                    }
+                }
             },
             enabled = uiState !is AuthUiState.Loading,
             modifier = Modifier.fillMaxWidth()

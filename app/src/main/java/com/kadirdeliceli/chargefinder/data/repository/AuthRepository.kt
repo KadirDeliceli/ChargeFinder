@@ -16,7 +16,7 @@ class AuthRepository(
 
     fun isUserLoggedIn(): Boolean = auth.currentUser != null
 
-    // EMAIL + ŞİFRE İLE KAYIT
+    // email ve password kayıt
     suspend fun registerWithEmail(
         email: String,
         password: String,
@@ -42,7 +42,7 @@ class AuthRepository(
         }
     }
 
-    // EMAIL + ŞİFRE İLE GİRİŞ
+    // email ve password giriş
     suspend fun loginWithEmail(email: String, password: String): Result<User> {
         return try {
             val authResult = auth.signInWithEmailAndPassword(email, password).await()
@@ -62,7 +62,7 @@ class AuthRepository(
         }
     }
 
-    // GOOGLE İLE GİRİŞ
+    // google ile giriş
     suspend fun loginWithGoogle(idToken: String): Result<User> {
         return try {
             val credential = GoogleAuthProvider.getCredential(idToken, null)
@@ -88,12 +88,18 @@ class AuthRepository(
         auth.signOut()
     }
 
-    // --- Firestore yardımcı fonksiyonları ---
+    // mevcut kullnıcıyı çek
+    suspend fun getCurrentUser(): User? {
+        val uid = auth.currentUser?.uid ?: return null
+        return getUserFromFirestore(uid)
+    }
+
+    // diğer fonksiyonlar
 
     private suspend fun saveUserToFirestore(user: User) {
         firestore.collection("users")
             .document(user.uid)
-            .set(user) // data class'ı direkt veriyoruz, Firestore otomatik serialize ediyor
+            .set(user)
             .await()
     }
 
@@ -104,7 +110,6 @@ class AuthRepository(
                 .get()
                 .await()
 
-            // toObject ile otomatik dönüşüm; döküman yoksa null döner
             document.toObject(User::class.java)
         } catch (e: Exception) {
             null

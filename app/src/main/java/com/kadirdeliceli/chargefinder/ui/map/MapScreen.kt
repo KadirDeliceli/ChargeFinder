@@ -1,8 +1,8 @@
 package com.kadirdeliceli.chargefinder.ui.map
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -43,7 +43,10 @@ import com.google.maps.android.compose.rememberCameraPositionState
 import com.kadirdeliceli.chargefinder.domain.model.ChargingStation
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.OutlinedButton
+import android.net.Uri
 import kotlinx.coroutines.tasks.await
 
 private val DEFAULT_LOCATION = LatLng(42.0231, 35.1531) // Sinop, izin verilmezse / konum alınamazsa kullanılacak
@@ -164,6 +167,7 @@ fun StationDetailBottomSheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState()
+    val context = LocalContext.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -225,6 +229,37 @@ fun StationDetailBottomSheet(
                         )
                     }
                 }
+            }
+
+            OutlinedButton(
+                onClick = {
+                    // Telefonun harita uygulamasında yol tarifi aç
+                    val uri = Uri.parse(
+                        "google.navigation:q=${station.latitude},${station.longitude}"
+                    )
+                    val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                        setPackage("com.google.android.apps.maps")
+                    }
+                    try {
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        // Google Maps yüklü değilse, herhangi bir harita uygulamasıyla aç
+                        val fallbackUri = Uri.parse(
+                            "geo:${station.latitude},${station.longitude}?q=${station.latitude},${station.longitude}"
+                        )
+                        val fallbackIntent = Intent(Intent.ACTION_VIEW, fallbackUri)
+                        context.startActivity(fallbackIntent)
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp)
+            ) {
+                Icon(Icons.Filled.Directions, contentDescription = null)
+                Text(
+                    text = "Yol Tarifi",
+                    modifier = Modifier.padding(start = 8.dp)
+                )
             }
 
             Button(

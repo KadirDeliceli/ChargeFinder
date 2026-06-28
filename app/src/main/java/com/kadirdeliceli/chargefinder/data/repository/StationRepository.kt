@@ -13,9 +13,8 @@ import kotlinx.coroutines.delay
 
 class StationRepository {
 
-    // ŞİMDİLİK MOCK VERİ KULLANIYORUZ.
+    // şuanda yalancı veri kullnacaz
     // OCM key'i gelince bu fonksiyonun içeriğini gerçek API çağrısıyla değiştireceğiz,
-    // ViewModel ve UI hiç değişmeyecek.
     suspend fun getNearbyStations(latitude: Double, longitude: Double): List<ChargingStation> {
         delay(800) // gerçek network gecikmesini simüle ediyoruz, loading state'i test edebilmek için
         return getMockPois(latitude, longitude).map { it.toDomainModel() }

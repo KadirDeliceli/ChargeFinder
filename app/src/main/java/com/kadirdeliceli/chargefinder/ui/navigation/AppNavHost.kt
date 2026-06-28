@@ -11,22 +11,20 @@ import androidx.navigation.compose.rememberNavController
 import com.kadirdeliceli.chargefinder.ui.auth.AuthViewModel
 import com.kadirdeliceli.chargefinder.ui.auth.LoginScreen
 import com.kadirdeliceli.chargefinder.ui.auth.RegisterScreen
-import com.kadirdeliceli.chargefinder.ui.map.MapScreen
+import com.kadirdeliceli.chargefinder.ui.main.MainScreen
 
 object Routes {
     const val LOGIN = "login"
     const val REGISTER = "register"
-    const val MAP = "map"
-    const val PROFILE = "profile"
+    const val MAIN = "main"
 }
 
 @Composable
 fun AppNavHost(
     navController: NavHostController = rememberNavController()
 ) {
-    // Uygulama açılışında kullanıcı giriş yapmış mı? Ona göre başlangıç ekranı belirleniyor.
     val authViewModel: AuthViewModel = viewModel()
-    val startDestination = if (authViewModel.isUserLoggedIn()) Routes.MAP else Routes.LOGIN
+    val startDestination = if (authViewModel.isUserLoggedIn()) Routes.MAIN else Routes.LOGIN
 
     NavHost(
         navController = navController,
@@ -39,8 +37,7 @@ fun AppNavHost(
         composable(Routes.LOGIN) {
             LoginScreen(
                 onLoginSuccess = {
-                    navController.navigate(Routes.MAP) {
-                        // Login ekranını geri yığınından temizle
+                    navController.navigate(Routes.MAIN) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }
                 },
@@ -53,8 +50,7 @@ fun AppNavHost(
         composable(Routes.REGISTER) {
             RegisterScreen(
                 onRegisterSuccess = {
-                    navController.navigate(Routes.MAP) {
-                        // Tüm auth ekranlarını geri yığınından temizle
+                    navController.navigate(Routes.MAIN) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }
                 },
@@ -64,24 +60,15 @@ fun AppNavHost(
             )
         }
 
-        composable(Routes.MAP) {
-            MapScreen()
-        }
-
-        composable(Routes.PROFILE) {
-            ProfileScreenPlaceholder(
-                onBack = { navController.popBackStack() }
+        composable(Routes.MAIN) {
+            MainScreen(
+                onLogout = {
+                    navController.navigate(Routes.LOGIN) {
+                        // Çıkışta tüm geri yığınını temizle, kullanıcı geri tuşuyla Main'e dönemesin
+                        popUpTo(Routes.MAIN) { inclusive = true }
+                    }
+                }
             )
-        }
-    }
-}
-
-@Composable
-fun ProfileScreenPlaceholder(onBack: () -> Unit) {
-    androidx.compose.foundation.layout.Column {
-        androidx.compose.material3.Text("Profil Ekranı")
-        androidx.compose.material3.Button(onClick = onBack) {
-            androidx.compose.material3.Text("Geri Dön")
         }
     }
 }

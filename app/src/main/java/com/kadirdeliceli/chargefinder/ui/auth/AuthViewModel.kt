@@ -23,6 +23,15 @@ class AuthViewModel(
     private val _uiState = MutableStateFlow<AuthUiState>(AuthUiState.Idle)
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
+    private val _currentUser = MutableStateFlow<User?>(null)
+    val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
+
+    fun loadCurrentUser() {
+        viewModelScope.launch {
+            _currentUser.value = repository.getCurrentUser()
+        }
+    }
+
     // Uygulama açılışında kullanıcı zaten giriş yapmış mı?
     fun isUserLoggedIn(): Boolean = repository.isUserLoggedIn()
 
@@ -71,7 +80,7 @@ class AuthViewModel(
         _uiState.value = AuthUiState.Idle
     }
 
-    // Hata mesajını sıfırla (kullanıcı tekrar denerken)
+    // Hata mesajını sıfırla
     fun resetState() {
         _uiState.value = AuthUiState.Idle
     }
