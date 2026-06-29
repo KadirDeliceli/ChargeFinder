@@ -3,21 +3,35 @@ package com.kadirdeliceli.chargefinder.ui.map
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Directions
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -30,26 +44,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.kadirdeliceli.chargefinder.domain.model.ChargingStation
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.compose.material.icons.filled.Directions
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.OutlinedButton
-import android.net.Uri
+import com.kadirdeliceli.chargefinder.domain.model.Connector
 import kotlinx.coroutines.tasks.await
 
-private val DEFAULT_LOCATION = LatLng(42.0231, 35.1531) // Sinop, izin verilmezse / konum alınamazsa kullanılacak
+private val DEFAULT_LOCATION = LatLng(42.0231, 35.1531) // Sinop
 
 @Composable
 fun MapScreen(
@@ -107,17 +121,22 @@ fun MapScreen(
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraPositionState,
-            properties = com.google.maps.android.compose.MapProperties(
-                isMyLocationEnabled = hasLocationPermission
-            )
+            properties = MapProperties(isMyLocationEnabled = hasLocationPermission)
         ) {
             if (uiState is StationsUiState.Success) {
                 val stations = (uiState as StationsUiState.Success).stations
                 stations.forEach { station ->
+                    val markerIcon = remember(station.id) {
+                        createStationMarker(
+                            color = operatorColor(station.operatorName),
+                            isOperational = station.isOperational
+                        )
+                    }
                     Marker(
                         state = MarkerState(position = LatLng(station.latitude, station.longitude)),
                         title = station.name,
                         snippet = station.operatorName,
+                        icon = markerIcon,
                         onClick = {
                             viewModel.onStationSelected(station)
                             true
@@ -129,17 +148,15 @@ fun MapScreen(
 
         when (uiState) {
             is StationsUiState.Loading -> {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                )
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
             is StationsUiState.Error -> {
                 Surface(
                     modifier = Modifier
                         .align(Alignment.Center)
                         .padding(16.dp),
-                    color = MaterialTheme.colorScheme.errorContainer
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(
                         text = (uiState as StationsUiState.Error).message,
@@ -148,7 +165,7 @@ fun MapScreen(
                     )
                 }
             }
-            is StationsUiState.Success -> { /* marker'lar zaten haritada çiziliyor */ }
+            is StationsUiState.Success -> { /* marker'lar haritada */ }
         }
     }
 
@@ -168,123 +185,217 @@ fun StationDetailBottomSheet(
 ) {
     val sheetState = rememberModalBottomSheetState()
     val context = LocalContext.current
+    val accentColor = Color(operatorColor(station.operatorName))
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = sheetState
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp)
         ) {
-            Text(
-                text = station.name,
-                style = MaterialTheme.typography.headlineSmall
-            )
-            station.operatorName?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            station.address?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-
-            Text(
-                text = if (station.isOperational) "Durum: Çalışıyor" else "Durum: Arızalı/Kapalı",
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (station.isOperational)
-                    MaterialTheme.colorScheme.primary
-                else
-                    MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-
-            Divider(modifier = Modifier.padding(vertical = 12.dp))
-
-            Text(
-                text = "Bağlantı Noktaları",
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            LazyColumn(
-                modifier = Modifier.padding(top = 8.dp)
-            ) {
-                items(station.connectors) { connector ->
-                    Column(modifier = Modifier.padding(vertical = 6.dp)) {
+            // Üst kısım: operatör rozeti + isim
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(accentColor),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Bolt,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    station.operatorName?.let {
                         Text(
-                            text = "${connector.type} ${if (connector.powerKw != null) "- ${connector.powerKw}kW" else ""}",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Text(
-                            text = "Adet: ${connector.quantity}" + if (connector.isFastCharge) " (Hızlı Şarj)" else "",
-                            style = MaterialTheme.typography.bodySmall
+                            text = it.uppercase(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = accentColor,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
                         )
                     }
+                    Text(
+                        text = station.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 26.sp
+                    )
                 }
             }
 
+            // Durum çipi
+            Spacer(modifier = Modifier.height(14.dp))
+            StatusChip(isOperational = station.isOperational)
+
+            // Adres
+            station.address?.let {
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.Top) {
+                    Icon(
+                        Icons.Filled.LocationOn,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Bağlantı noktaları
+            Spacer(modifier = Modifier.height(20.dp))
+            Text(
+                text = "Bağlantı Noktaları",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            station.connectors.forEach { connector ->
+                ConnectorCard(connector = connector, accentColor = accentColor)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            // Butonlar
+            Spacer(modifier = Modifier.height(16.dp))
             OutlinedButton(
                 onClick = {
-                    // Telefonun harita uygulamasında yol tarifi aç
-                    val uri = Uri.parse(
-                        "google.navigation:q=${station.latitude},${station.longitude}"
-                    )
+                    val uri = Uri.parse("google.navigation:q=${station.latitude},${station.longitude}")
                     val intent = Intent(Intent.ACTION_VIEW, uri).apply {
                         setPackage("com.google.android.apps.maps")
                     }
                     try {
                         context.startActivity(intent)
                     } catch (e: Exception) {
-                        // Google Maps yüklü değilse, herhangi bir harita uygulamasıyla aç
-                        val fallbackUri = Uri.parse(
-                            "geo:${station.latitude},${station.longitude}?q=${station.latitude},${station.longitude}"
-                        )
-                        val fallbackIntent = Intent(Intent.ACTION_VIEW, fallbackUri)
-                        context.startActivity(fallbackIntent)
+                        val fallback = Uri.parse("geo:${station.latitude},${station.longitude}?q=${station.latitude},${station.longitude}")
+                        context.startActivity(Intent(Intent.ACTION_VIEW, fallback))
                     }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp)
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Icon(Icons.Filled.Directions, contentDescription = null)
-                Text(
-                    text = "Yol Tarifi",
-                    modifier = Modifier.padding(start = 8.dp)
-                )
+                Icon(Icons.Filled.Directions, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Yol Tarifi")
             }
 
+            Spacer(modifier = Modifier.height(10.dp))
             Button(
-                onClick = {
-                    // Gerçek şarj entegrasyonu henüz yok, bu yüzden bilgilendirici mesaj gösteriyoruz.
-                    // İleride firma API entegrasyonu eklenince, station.isChargingSupported true olacak
-                    // ve burada gerçek şarj başlatma akışına yönlendirilecek.
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp)
+                onClick = { /* şarj entegrasyonu ileride */ },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor)
             ) {
-                Icon(Icons.Filled.Bolt, contentDescription = null)
-                Text(
-                    text = "Şarj Et",
-                    modifier = Modifier.padding(start = 8.dp)
-                )
+                Icon(Icons.Filled.Bolt, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Şarj Et")
             }
 
             if (!station.isChargingSupported) {
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Bu özellik üzerinde çalışıyoruz, yakında! 🔌",
+                    text = "Şarj başlatma yakında aktif olacak.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusChip(isOperational: Boolean) {
+    val bg = if (isOperational) Color(0xFF065F46) else Color(0xFF7F1D1D)
+    val dot = if (isOperational) Color(0xFF34D399) else Color(0xFFF87171)
+    val label = if (isOperational) "Çalışıyor" else "Arızalı / Kapalı"
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = bg.copy(alpha = 0.15f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(dot)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = dot,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConnectorCard(connector: Connector, accentColor: Color) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(accentColor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Bolt,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = connector.type,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = buildString {
+                        append("${connector.quantity} adet")
+                        if (connector.isFastCharge) append(" • Hızlı şarj")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            connector.powerKw?.let {
+                Text(
+                    text = "${it.toInt()} kW",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = accentColor
                 )
             }
         }
