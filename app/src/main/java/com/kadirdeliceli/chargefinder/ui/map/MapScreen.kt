@@ -7,9 +7,11 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,12 +20,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Directions
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -34,6 +39,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +71,7 @@ import kotlinx.coroutines.tasks.await
 
 private val DEFAULT_LOCATION = LatLng(42.0231, 35.1531) // Sinop
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(
     viewModel: MapViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
@@ -105,7 +112,7 @@ fun MapScreen(
                     userLocation = LatLng(location.latitude, location.longitude)
                 }
             } catch (e: SecurityException) {
-                // izin yok, varsayılan konum kullanılacak
+                // varsayılan konum
             }
             viewModel.loadStations(userLocation.latitude, userLocation.longitude)
         } else {
@@ -117,55 +124,63 @@ fun MapScreen(
         position = CameraPosition.fromLatLngZoom(userLocation, 13f)
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        GoogleMap(
-            modifier = Modifier.fillMaxSize(),
-            cameraPositionState = cameraPositionState,
-            properties = MapProperties(isMyLocationEnabled = hasLocationPermission)
-        ) {
-            if (uiState is StationsUiState.Success) {
-                val stations = (uiState as StationsUiState.Success).stations
-                stations.forEach { station ->
-                    val markerIcon = remember(station.id) {
-                        createStationMarker(
-                            color = operatorColor(station.operatorName),
-                            isOperational = station.isOperational
+    LaunchedEffect(userLocation) {
+        cameraPositionState.animate(
+            update = com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(userLocation, 14f)
+        )
+    }
+
+    val scaffoldState = rememberBottomSheetScaffoldState()
+
+    BottomSheetScaffold(
+        scaffoldState = scaffoldState,
+        sheetPeekHeight = 160.dp,
+        sheetContainerColor = MaterialTheme.colorScheme.surface,
+        sheetContent = {
+            val selectedFilter by viewModel.selectedFilter.collectAsState()
+            StationListSheet(
+                uiState = uiState,
+                selectedFilter = selectedFilter,
+                onFilterSelected = { viewModel.setFilter(it) },
+                onStationClick = { station ->
+                    viewModel.onStationSelected(station)
+                }
+            )
+        }
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            GoogleMap(
+                modifier = Modifier.fillMaxSize(),
+                cameraPositionState = cameraPositionState,
+                properties = MapProperties(isMyLocationEnabled = hasLocationPermission),
+                contentPadding = PaddingValues(bottom = 180.dp)
+            ) {
+                if (uiState is StationsUiState.Success) {
+                    val stations = (uiState as StationsUiState.Success).stations
+                    stations.forEach { station ->
+                        val markerIcon = remember(station.id) {
+                            createStationMarker(
+                                color = operatorColor(station.operatorName),
+                                isOperational = station.isOperational
+                            )
+                        }
+                        Marker(
+                            state = MarkerState(position = LatLng(station.latitude, station.longitude)),
+                            title = station.name,
+                            snippet = station.operatorName,
+                            icon = markerIcon,
+                            onClick = {
+                                viewModel.onStationSelected(station)
+                                true
+                            }
                         )
                     }
-                    Marker(
-                        state = MarkerState(position = LatLng(station.latitude, station.longitude)),
-                        title = station.name,
-                        snippet = station.operatorName,
-                        icon = markerIcon,
-                        onClick = {
-                            viewModel.onStationSelected(station)
-                            true
-                        }
-                    )
                 }
             }
-        }
 
-        when (uiState) {
-            is StationsUiState.Loading -> {
+            if (uiState is StationsUiState.Loading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
-            is StationsUiState.Error -> {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(16.dp),
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        text = (uiState as StationsUiState.Error).message,
-                        modifier = Modifier.padding(16.dp),
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                }
-            }
-            is StationsUiState.Success -> { /* marker'lar haritada */ }
         }
     }
 
@@ -198,7 +213,6 @@ fun StationDetailBottomSheet(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp)
         ) {
-            // Üst kısım: operatör rozeti + isim
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
@@ -234,11 +248,9 @@ fun StationDetailBottomSheet(
                 }
             }
 
-            // Durum çipi
             Spacer(modifier = Modifier.height(14.dp))
             StatusChip(isOperational = station.isOperational)
 
-            // Adres
             station.address?.let {
                 Spacer(modifier = Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.Top) {
@@ -257,7 +269,6 @@ fun StationDetailBottomSheet(
                 }
             }
 
-            // Bağlantı noktaları
             Spacer(modifier = Modifier.height(20.dp))
             Text(
                 text = "Bağlantı Noktaları",
@@ -270,7 +281,6 @@ fun StationDetailBottomSheet(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // Butonlar
             Spacer(modifier = Modifier.height(16.dp))
             OutlinedButton(
                 onClick = {
@@ -397,6 +407,213 @@ private fun ConnectorCard(connector: Connector, accentColor: Color) {
                     fontWeight = FontWeight.Bold,
                     color = accentColor
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StationListSheet(
+    uiState: StationsUiState,
+    selectedFilter: MapViewModel.StationFilter,
+    onFilterSelected: (MapViewModel.StationFilter) -> Unit,
+    onStationClick: (ChargingStation) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+    ) {
+        Text(
+            text = "Yakındaki İstasyonlar",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        FilterChips(
+            selectedFilter = selectedFilter,
+            onFilterSelected = onFilterSelected
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        when (uiState) {
+            is StationsUiState.Success -> {
+                val stations = uiState.stations
+                if (stations.isEmpty()) {
+                    Text(
+                        text = "Bu filtreye uygun istasyon yok.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 24.dp)
+                    )
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(bottom = 110.dp)
+                    ) {
+                        items(stations) { station ->
+                            StationListItem(station = station, onClick = { onStationClick(station) })
+                        }
+                    }
+                }
+            }
+            is StationsUiState.Loading -> {
+                Text(
+                    text = "İstasyonlar yükleniyor...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 24.dp)
+                )
+            }
+            is StationsUiState.Error -> {
+                Text(
+                    text = uiState.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(vertical = 24.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterChips(
+    selectedFilter: MapViewModel.StationFilter,
+    onFilterSelected: (MapViewModel.StationFilter) -> Unit
+) {
+    val filters = listOf(
+        MapViewModel.StationFilter.ALL to "Tümü",
+        MapViewModel.StationFilter.FAST to "Hızlı Şarj",
+        MapViewModel.StationFilter.AVAILABLE to "Boşta"
+    )
+
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        filters.forEach { (filter, label) ->
+            val selected = filter == selectedFilter
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = if (selected)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.clickable { onFilterSelected(filter) }
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (selected)
+                        MaterialTheme.colorScheme.onPrimary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StationListItem(
+    station: ChargingStation,
+    onClick: () -> Unit
+) {
+    val accent = Color(operatorColor(station.operatorName))
+    val maxPower = station.connectors.mapNotNull { it.powerKw }.maxOrNull()
+    val hasFastCharge = station.connectors.any { it.isFastCharge }
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(accent.copy(alpha = if (station.isOperational) 0.15f else 0.08f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Bolt,
+                    contentDescription = null,
+                    tint = if (station.isOperational) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = station.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    station.operatorName?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = accent,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = " • ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    maxPower?.let {
+                        Text(
+                            text = "${it.toInt()} kW",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (hasFastCharge) {
+                        Text(
+                            text = " • Hızlı",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                if (!station.isOperational) {
+                    Text(
+                        text = "Arızalı / Kapalı",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+
+            station.distanceKm?.let {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = if (it < 1) "${(it * 1000).toInt()}" else "%.1f".format(it),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (it < 1) "m" else "km",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

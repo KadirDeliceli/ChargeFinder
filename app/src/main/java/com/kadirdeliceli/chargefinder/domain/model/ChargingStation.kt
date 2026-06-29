@@ -10,7 +10,8 @@ data class ChargingStation(
     val isOperational: Boolean,
     val totalPoints: Int,
     val connectors: List<Connector>,
-    val isChargingSupported: Boolean = false
+    val isChargingSupported: Boolean = false,
+    val distanceKm: Double? = null
 )
 
 data class Connector(
