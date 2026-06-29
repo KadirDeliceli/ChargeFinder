@@ -94,7 +94,7 @@ class StationRepository {
             station("Sharz Belediye", -0.004, -0.020, "Sharz", "Belediye Önü", true, "CCS", 50.0, 1, true),
 
             // Beefull (2 adet)
-            station("Beefull Market", 0.016, 0.016, "Beefull", "Market Otoparkı", true, "Type 2", 22.0, 3, false),
+            station("Beefull Market", 0.022, -0.014, "Beefull", "Market Otoparkı", true, "Type 2", 22.0, 3, false),
             station("Beefull Köprü", -0.020, 0.020, "Beefull", "Köprübaşı Mevkii", false, "CCS", 50.0, 1, true),
 
             // Bilinmeyen operatör (2 adet - rengi isimden türetilecek)

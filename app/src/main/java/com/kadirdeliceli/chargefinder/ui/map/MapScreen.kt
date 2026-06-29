@@ -60,10 +60,10 @@ import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.clustering.ClusterManager
 import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapEffect
 import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.kadirdeliceli.chargefinder.domain.model.ChargingStation
 import com.kadirdeliceli.chargefinder.domain.model.Connector
@@ -79,6 +79,10 @@ fun MapScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val selectedStation by viewModel.selectedStation.collectAsState()
+
+    var clusterManager by remember {
+        mutableStateOf<ClusterManager<StationClusterItem>?>(null)
+    }
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -155,25 +159,59 @@ fun MapScreen(
                 properties = MapProperties(isMyLocationEnabled = hasLocationPermission),
                 contentPadding = PaddingValues(bottom = 180.dp)
             ) {
-                if (uiState is StationsUiState.Success) {
-                    val stations = (uiState as StationsUiState.Success).stations
-                    stations.forEach { station ->
-                        val markerIcon = remember(station.id) {
-                            createStationMarker(
-                                color = operatorColor(station.operatorName),
-                                isOperational = station.isOperational
-                            )
+                val stations = if (uiState is StationsUiState.Success) {
+                    (uiState as StationsUiState.Success).stations
+                } else {
+                    emptyList()
+                }
+
+                MapEffect(stations) { map ->
+                    if (clusterManager == null) {
+                        val manager = ClusterManager<StationClusterItem>(context, map)
+                        val renderer = StationClusterRenderer(context, map, manager)
+                        manager.renderer = renderer
+
+                        manager.setOnClusterItemClickListener { item ->
+                            viewModel.onStationSelected(item.station)
+                            true
                         }
-                        Marker(
-                            state = MarkerState(position = LatLng(station.latitude, station.longitude)),
-                            title = station.name,
-                            snippet = station.operatorName,
-                            icon = markerIcon,
-                            onClick = {
-                                viewModel.onStationSelected(station)
-                                true
+
+                        // Kümeye (sayı balonuna) tıklayınca o bölgeye zoom yap
+                        manager.setOnClusterClickListener { cluster ->
+                            val items = cluster.items.toList()
+                            // Küme içindeki istasyonlar birbirine çok yakın mı? (zoom çözer mi?)
+                            val positions = items.map { it.position }
+                            val allSamePoint = positions.all { pos ->
+                                kotlin.math.abs(pos.latitude - positions.first().latitude) < 0.0001 &&
+                                        kotlin.math.abs(pos.longitude - positions.first().longitude) < 0.0001
                             }
-                        )
+
+                            if (allSamePoint || map.cameraPosition.zoom >= 16f) {
+                                // Aynı noktadalar (veya zaten çok yakınız) → liste göster
+                                viewModel.onClusterSelected(items.map { it.station })
+                            } else {
+                                // Farklı konumlar → zoom yap, ayrılsınlar
+                                val currentZoom = map.cameraPosition.zoom
+                                map.animateCamera(
+                                    com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(
+                                        cluster.position,
+                                        currentZoom + 2f
+                                    )
+                                )
+                            }
+                            true
+                        }
+
+                        map.setOnCameraIdleListener(manager)
+                        map.setOnMarkerClickListener(manager)
+
+                        clusterManager = manager
+                    }
+
+                    clusterManager?.let { manager ->
+                        manager.clearItems()
+                        manager.addItems(stations.map { StationClusterItem(it) })
+                        manager.cluster()
                     }
                 }
             }
@@ -189,6 +227,57 @@ fun MapScreen(
             station = station,
             onDismiss = { viewModel.onStationDetailDismissed() }
         )
+    }
+    val clusterStations by viewModel.clusterStations.collectAsState()
+    if (clusterStations.isNotEmpty()) {
+        ClusterStationsBottomSheet(
+            stations = clusterStations,
+            onStationClick = { station ->
+                viewModel.onClusterDismissed()
+                viewModel.onStationSelected(station)
+            },
+            onDismiss = { viewModel.onClusterDismissed() }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ClusterStationsBottomSheet(
+    stations: List<ChargingStation>,
+    onStationClick: (ChargingStation) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp)
+        ) {
+            Text(
+                text = "Bu Konumdaki İstasyonlar",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "${stations.size} istasyon aynı noktada",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                stations.forEach { station ->
+                    StationListItem(station = station, onClick = { onStationClick(station) })
+                }
+            }
+        }
     }
 }
 

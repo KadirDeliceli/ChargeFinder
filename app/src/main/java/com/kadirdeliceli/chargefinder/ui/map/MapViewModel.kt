@@ -33,6 +33,20 @@ class MapViewModel(
 
     private val _allStations = MutableStateFlow<List<ChargingStation>>(emptyList())
 
+
+    // Aynı/çok yakın noktadaki kümeye tıklanınca gösterilecek istasyon listesi
+    private val _clusterStations = MutableStateFlow<List<ChargingStation>>(emptyList())
+    val clusterStations: StateFlow<List<ChargingStation>> = _clusterStations.asStateFlow()
+
+    fun onClusterSelected(stations: List<ChargingStation>) {
+        _clusterStations.value = stations
+    }
+
+    fun onClusterDismissed() {
+        _clusterStations.value = emptyList()
+    }
+
+
     fun setFilter(filter: StationFilter) {
         _selectedFilter.value = filter
         applyFilter()
