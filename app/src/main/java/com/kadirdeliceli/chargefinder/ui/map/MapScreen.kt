@@ -69,7 +69,7 @@ import com.kadirdeliceli.chargefinder.domain.model.ChargingStation
 import com.kadirdeliceli.chargefinder.domain.model.Connector
 import kotlinx.coroutines.tasks.await
 
-private val DEFAULT_LOCATION = LatLng(42.0231, 35.1531) // Sinop
+private val DEFAULT_LOCATION = LatLng(41.0082, 28.9784) // İstanbul (Sultanahmet civarı)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
